@@ -59,10 +59,13 @@ class SyncView {
    */
   static setWindowPositionPatch(start, end, viewerInstance) {
     // proceed w/ original code for our origin frame
-    const selectionPcts = SyncView.originalSetWindowPosition.call(this, start, end);
+    const selectionPcts = SyncView.originalSetWindowPosition.call(this, start, end);    
     this._originalPanel = Timeline.TimelinePanel.instance();
+
+    // set target panels duration
     const durationMs = viewerInstance.syncView._getSelectionDuration(selectionPcts);
-    viewerInstance.syncView._setTargetPanelsDuration(durationMs);
+    const startMs = viewerInstance.syncView._getSelectionStart(selectionPcts);
+    viewerInstance.syncView._setTargetPanelsDuration(durationMs, startMs);
   }
 
   _getSelectionDuration(selectionPcts) {
@@ -75,13 +78,26 @@ class SyncView {
     return originSelectionDurationMs;
   }
 
-  _setTargetPanelsDuration(durationMs) {
+  _getSelectionStart(selectionPcts) {
+    const originalPanel = this.originalPanel();
+    const originTraceStart = originalPanel._overviewPane._overviewCalculator.minimumBoundary();
+    const originTraceLengthMs = originalPanel._overviewPane._overviewCalculator.maximumBoundary() - originTraceStart;
+
+    const originSelectionStartMs = selectionPcts.start * originTraceLengthMs;
+    return originSelectionStartMs;
+  }
+
+  _setTargetPanelsDuration(durationMs, startMs) {
     // calculate what target frames should be:
     const targetPanels = this.targetPanels();
     for (const targetPanel of targetPanels) {
       const absoluteMin = targetPanel._overviewPane._overviewCalculator.minimumBoundary();
       const targetTraceLengthMs = targetPanel._overviewPane._overviewCalculator.maximumBoundary() - absoluteMin;
-      const currentLeftOffsetPct = targetPanel._overviewPane._overviewGrid._window.windowLeft;
+      let currentLeftOffsetPct = targetPanel._overviewPane._overviewGrid._window.windowLeft;
+
+      if(startMs) {
+        currentLeftOffsetPct = startMs/targetTraceLengthMs;
+      }
 
       const windowPercentages = {
         left: currentLeftOffsetPct,

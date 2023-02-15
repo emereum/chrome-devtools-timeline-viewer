@@ -8,6 +8,8 @@ class Viewer {
     this.params = new URL(location.href).searchParams;
     this.syncView = new SyncView();
     this.timelineURL = this.params.get('loadTimelineFromURL');
+    this.startAsEmptySplitChild = this.params.get('startAsEmptySplitChild');
+    this.splits = this.params.get('splits') ? parseInt(this.params.get('splits')) : 2;
     this.timelineId = null;
     this.timelineProvider = 'url';
 
@@ -24,7 +26,6 @@ class Viewer {
     this.uploadToDriveElem = document.getElementById('upload-to-drive');
     this.networkOnlineStatusElem = document.getElementById('online-status');
     this.networkOfflineStatusElem = document.getElementById('offline-status');
-    this.authBtn = document.getElementById('auth');
     this.revokeAccessBtn = document.getElementById('revoke-access');
     this.docsElem = document.getElementById('howto');
 
@@ -39,32 +40,23 @@ class Viewer {
       this.driveAssetLoadedResolver = resolve;
     });
 
-    this.parseURLforTimelineId(this.timelineURL);
+    if(this.startAsEmptySplitChild) {
+      document.querySelector('.welcome').remove();
+      document.querySelector('.top-message-container').remove();
 
-    if (!this.timelineURL || this.startSplitViewIfNeeded(this.timelineURL)) {
-      this.splitViewContainer = document.getElementById('split-view-container');
-      this.isSplitView = this.splitViewContainer ? true : false;
-      this.canUploadToDrive = true;
-      this.welcomeView = true;
-      this.handleDragEvents();
-      this.docsElem.hidden = false;
-    }
-
-    // Start loading DevTools. (checkAuth will be racing against it)
-    this.statusElem.hidden = false;
-
-    this.handleNetworkStatus();
-    this.devTools.init();
-
-    if (!this.welcomeView) {
+      // Start loading DevTools.
+      this.statusElem.hidden = false;
+      this.handleNetworkStatus();
+      this.devTools.init();
+      this.devTools.monkeyPatchingHandleDrop(this.syncView);
       this.makeDevToolsVisible(true);
+    } else {
+      this.startEmptySplitRoot(this.splits);
     }
   }
 
   attachEventListeners() {
-    this.authBtn.addEventListener('click', this.checkAuth.bind(this));
     this.revokeAccessBtn.addEventListener('click', this.revokeAccess.bind(this));
-    this.uploadToDriveElem.addEventListener('click', this.uploadTimelineData.bind(this));
     this.attachSubmitUrlListener();
     this.attachPrefillUrlListener();
   }
@@ -182,27 +174,22 @@ class Viewer {
     }
   }
 
-  startSplitViewIfNeeded(urls) {
-    urls = urls.split(',');
+  startEmptySplitRoot(splits) {
+    const frameset = document.createElement('frameset');
+    frameset.setAttribute('id', 'split-view-container');
+    frameset.setAttribute('rows', new Array(splits).fill(`${100/2}%`).join(','));
 
-    if (urls.length > 1) {
-      const frameset = document.createElement('frameset');
-      frameset.setAttribute('id', 'split-view-container');
-      frameset.setAttribute('rows', new Array(urls.length).fill(`${100/2}%`).join(','));
-
-      urls.forEach((url, index) => {
-        const frame = document.createElement('frame');
-        frame.setAttribute('id', `split-view-${index}`);
-        frame.setAttribute('src', `./?loadTimelineFromURL=${url.trim()}`);
-        frameset.appendChild(frame);
-      });
-      document.body.appendChild(frameset);
-      document.documentElement.classList.add('fullbleed');
-      document.querySelector('.welcome').remove();
-      document.querySelector('.top-message-container').remove();
-      return true;
-    }
-    return false;
+    for(let i = 0; i < splits; i++) {
+      const frame = document.createElement('frame');
+      frame.setAttribute('id', `split-view-${i}`);
+      frame.setAttribute('src', `./?startAsEmptySplitChild=true`);
+      frameset.appendChild(frame);
+    };
+    document.body.appendChild(frameset);
+    document.documentElement.classList.add('fullbleed');
+    document.querySelector('.welcome').remove();
+    document.querySelector('.top-message-container').remove();
+    return true;
   }
 
   makeDevToolsVisible(bool) {
@@ -212,13 +199,6 @@ class Viewer {
 
   updateStatus(str) {
     this.statusElem.textContent = str;
-  }
-
-  checkAuth() {
-    const handleAuth = this.handleAuthResult.bind(this);
-    this.auth.checkAuth(handleAuth);
-
-    return false;
   }
 
   revokeAccess() {
@@ -401,35 +381,6 @@ class Viewer {
         }
       });
     } catch (e) {}
-  }
-
-  uploadTimelineData() {
-    const panel = Timeline.TimelinePanel.instance();
-    const bs = panel._performanceModel._tracingModel.backingStorage();
-    return bs._file.read().then(str => {
-      this.uploadData(str);
-    });
-  }
-
-  uploadData(traceData) {
-    this.toggleUploadToDriveElem(false);
-    this.showInfoMessage('Uploading trace on Google Drive ...');
-    this.gdrive.uploadData(`Timeline-data-${Date.now()}`, traceData)
-      .then(data => {
-        if (data.error) throw data.error;
-        else return data;
-      })
-      .then(data => {
-        return this.gdrive.insertPermission(data.id).then(_ => data);
-      })
-      .then(data => {
-        this.changeUrl(data.id);
-        this.showInfoMessage('Trace successfully uploaded on Google Drive');
-      })
-      .catch(_ => {
-        this.toggleUploadToDriveElem(this.canUploadToDrive);
-        this.showInfoMessage('Trace was not uploaded on Google Drive :(');
-      });
   }
 
   changeUrl(id) {

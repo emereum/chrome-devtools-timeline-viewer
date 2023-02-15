@@ -155,7 +155,7 @@ class DevTools {
     Runtime.loadResourcePromise = this.viewerInstance.loadResource.bind(this.viewerInstance);
   }
 
-  monkeyPatchingHandleDrop() {
+  monkeyPatchingHandleDrop(syncView) {
     // todo add detection for correct panel in split view
     // todo sync traces after dropping file
     if (window.Timeline && window.Timeline.TimelinePanel) {
@@ -166,6 +166,9 @@ class DevTools {
       dropTarget._handleDrop = function(...args) {
         viewerInstance.toggleUploadToDriveElem(viewerInstance.canUploadToDrive);
         handleDrop.apply(dropTarget, args);
+
+        syncView.splitViewTimelineLoaded()
+            .then(_ => SyncView.synchronizeRange(SyncView.panels()[0], syncView))
       };
     }
   }
