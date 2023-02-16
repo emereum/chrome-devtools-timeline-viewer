@@ -48,7 +48,8 @@ class SyncView {
       end: originalPanel._overviewPane._overviewGrid._window.windowRight
     };
     const durationMs = viewerInstance.syncView._getSelectionDuration(selectionPcts);
-    viewerInstance._setTargetPanelsDuration(durationMs);
+    const startMs = viewerInstance.syncView._getSelectionStart(selectionPcts);
+    viewerInstance._setTargetPanelsDuration(durationMs, startMs);
   }
 
   /**
@@ -59,13 +60,30 @@ class SyncView {
    */
   static setWindowPositionPatch(start, end, viewerInstance) {
     // proceed w/ original code for our origin frame
-    const selectionPcts = SyncView.originalSetWindowPosition.call(this, start, end);    
     this._originalPanel = Timeline.TimelinePanel.instance();
+    const beforeStartPct = this._originalPanel._overviewPane._overviewGrid._window.windowLeft;
+    const beforeEndPct =  this._originalPanel._overviewPane._overviewGrid._window.windowRight;
 
-    // set target panels duration
-    const durationMs = viewerInstance.syncView._getSelectionDuration(selectionPcts);
-    const startMs = viewerInstance.syncView._getSelectionStart(selectionPcts);
-    viewerInstance.syncView._setTargetPanelsDuration(durationMs, startMs);
+    const selectionPcts = SyncView.originalSetWindowPosition.call(this, start, end);
+
+    const afterStartPct = this._originalPanel._overviewPane._overviewGrid._window.windowLeft;
+    const afterEndPct =  this._originalPanel._overviewPane._overviewGrid._window.windowRight;
+
+    if(!this._originalPanel.isReindexing) {
+      // set target panels duration
+      const pctsWithOffset = {
+        start: selectionPcts.start - (this._originalPanel.startOffsetPct ?? 0),
+        end: selectionPcts.end - (this._originalPanel.endOffsetPct ?? 0),
+      }
+      const durationMs = viewerInstance.syncView._getSelectionDuration(pctsWithOffset);
+      const startMs = viewerInstance.syncView._getSelectionStart(pctsWithOffset);
+      viewerInstance.syncView._setTargetPanelsDuration(durationMs, startMs);
+    } else {
+      this._originalPanel.startOffsetPct = this._originalPanel.startOffsetPct ?? 0;
+      this._originalPanel.endOffsetPct = this._originalPanel.endOffsetPct ?? 0;
+      this._originalPanel.startOffsetPct += (afterStartPct - beforeStartPct);
+      this._originalPanel.endOffsetPct += (afterEndPct - beforeEndPct);
+    }
   }
 
   _getSelectionDuration(selectionPcts) {
@@ -103,8 +121,13 @@ class SyncView {
         left: currentLeftOffsetPct,
         right: currentLeftOffsetPct + (durationMs / targetTraceLengthMs)
       };
+
+      const pctsWithOffset = {
+        left: windowPercentages.left + (targetPanel.startOffsetPct ?? 0),
+        right: windowPercentages.right + (targetPanel.endOffsetPct ?? 0),
+      }
       // call it on the frame's PerfUI.OverviewGrid.Window
-      targetPanel._overviewPane._overviewGrid._window._setWindow(windowPercentages.left, windowPercentages.right);
+      targetPanel._overviewPane._overviewGrid._window._setWindow(pctsWithOffset.left, pctsWithOffset.right);
     }
   }
 

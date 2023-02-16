@@ -13,6 +13,10 @@ class DevTools {
       if (self.UI && UI.KeyboardShortcut.eventHasCtrlOrMeta(event) && String.fromCharCode(event.which).toLowerCase() === 'r') {
         event.handled = true;
       }
+      SyncView.panels().forEach(x => x.isReindexing = event.shiftKey);
+    });
+    document.addEventListener('keyup', event => {
+      SyncView.panels().forEach(x => x.isReindexing = event.shiftKey);
     });
   }
 
